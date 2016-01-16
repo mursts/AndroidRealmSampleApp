@@ -12,9 +12,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import jp.mursts.android.androidrealmsampleapp.dummy.DummyContent;
+import io.realm.Realm;
+import io.realm.RealmChangeListener;
+import io.realm.RealmResults;
+import jp.mursts.android.androidrealmsampleapp.models.Todo;
+import jp.mursts.android.androidrealmsampleapp.models.TodoDAO;
 
 /**
  * An activity representing a list of Items. This activity
@@ -32,10 +37,23 @@ public class ItemListActivity extends AppCompatActivity {
      */
     private boolean mTwoPane;
 
+    private SimpleItemRecyclerViewAdapter mAdapter;
+
+    private Realm mRealm;
+    private RealmResults<Todo> mTodoList;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_item_list);
+
+        mRealm = Realm.getInstance(this);
+
+        Todo todo = new Todo();
+        todo.setId(System.currentTimeMillis());
+        todo.setTodo("Buy milk");
+        todo.setRemark("牛乳を買いに行く");
+        TodoDAO.addTodo(mRealm, todo);
 
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -44,6 +62,8 @@ public class ItemListActivity extends AppCompatActivity {
         View recyclerView = findViewById(R.id.item_list);
         assert recyclerView != null;
         setupRecyclerView((RecyclerView) recyclerView);
+
+        loadTodo();
 
         if (findViewById(R.id.item_detail_container) != null) {
             // The detail container view will be present only in the
@@ -54,17 +74,49 @@ public class ItemListActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        if (mRealm != null) {
+            mRealm.close();
+        }
+        super.onDestroy();
+    }
+
     private void setupRecyclerView(@NonNull RecyclerView recyclerView) {
-        recyclerView.setAdapter(new SimpleItemRecyclerViewAdapter(DummyContent.ITEMS));
+        mAdapter = new SimpleItemRecyclerViewAdapter();
+        recyclerView.setAdapter(mAdapter);
+    }
+
+    private void updateListView() {
+        if (mAdapter != null && mTodoList != null) {
+            if (mAdapter.getItemCount() == 0) {
+                mAdapter.setData(mTodoList);
+            }
+            mAdapter.notifyDataSetChanged();
+        }
+    }
+
+    private void loadTodo() {
+        mTodoList = TodoDAO.loadAll(mRealm);
+        mTodoList.addChangeListener(new RealmChangeListener() {
+            @Override
+            public void onChange() {
+                updateListView();
+            }
+        });
     }
 
     public class SimpleItemRecyclerViewAdapter
             extends RecyclerView.Adapter<SimpleItemRecyclerViewAdapter.ViewHolder> {
 
-        private final List<DummyContent.DummyItem> mValues;
+        private List<Todo> mTodoList;
 
-        public SimpleItemRecyclerViewAdapter(List<DummyContent.DummyItem> items) {
-            mValues = items;
+        public SimpleItemRecyclerViewAdapter() {
+            mTodoList = new ArrayList<>();
+        }
+
+        public void setData(@NonNull List<Todo> data) {
+            mTodoList = data;
         }
 
         @Override
@@ -76,16 +128,16 @@ public class ItemListActivity extends AppCompatActivity {
 
         @Override
         public void onBindViewHolder(final ViewHolder holder, int position) {
-            holder.mItem = mValues.get(position);
-            holder.mIdView.setText(mValues.get(position).id);
-            holder.mContentView.setText(mValues.get(position).content);
+            holder.mItem = mTodoList.get(position);
+            holder.mIdView.setText(String.valueOf(mTodoList.get(position).getId()));
+            holder.mTodoView.setText(mTodoList.get(position).getTodo());
 
             holder.mView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     if (mTwoPane) {
                         Bundle arguments = new Bundle();
-                        arguments.putString(ItemDetailFragment.ARG_ITEM_ID, holder.mItem.id);
+                        arguments.putLong(ItemDetailFragment.ARG_ITEM_ID, holder.mItem.getId());
                         ItemDetailFragment fragment = new ItemDetailFragment();
                         fragment.setArguments(arguments);
                         getSupportFragmentManager().beginTransaction()
@@ -94,7 +146,7 @@ public class ItemListActivity extends AppCompatActivity {
                     } else {
                         Context context = v.getContext();
                         Intent intent = new Intent(context, ItemDetailActivity.class);
-                        intent.putExtra(ItemDetailFragment.ARG_ITEM_ID, holder.mItem.id);
+                        intent.putExtra(ItemDetailFragment.ARG_ITEM_ID, holder.mItem.getId());
 
                         context.startActivity(intent);
                     }
@@ -104,25 +156,25 @@ public class ItemListActivity extends AppCompatActivity {
 
         @Override
         public int getItemCount() {
-            return mValues.size();
+            return mTodoList.size();
         }
 
         public class ViewHolder extends RecyclerView.ViewHolder {
             public final View mView;
             public final TextView mIdView;
-            public final TextView mContentView;
-            public DummyContent.DummyItem mItem;
+            public final TextView mTodoView;
+            public Todo mItem;
 
             public ViewHolder(View view) {
                 super(view);
                 mView = view;
                 mIdView = (TextView) view.findViewById(R.id.id);
-                mContentView = (TextView) view.findViewById(R.id.content);
+                mTodoView = (TextView) view.findViewById(R.id.content);
             }
 
             @Override
             public String toString() {
-                return super.toString() + " '" + mContentView.getText() + "'";
+                return super.toString() + " '" + mTodoView.getText() + "'";
             }
         }
     }
